@@ -1,40 +1,23 @@
-# Node.js
+# Dependencies and local environments
 node_modules/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
-
-# Python
-*.pyc
+.venv/
 __pycache__/
+*.pyc
 
-# Java
-*.class
+# Generated output
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Logs and local settings
 *.log
-*.jar
-
-# macOS
+.env
+.env.*
+!.env.example
 .DS_Store
-
-# Linux
-*~
-
-# Windows
 Thumbs.db
-Desktop.ini
-
-# IDEs
-.vscode/
 .idea/
-
-# Logs
-*.log
-
-# Temporary files
-*.bak
+.vscode/
 *.swp
-*.swo
-*.tmp
-
-# JetBrains IDEs
-*.iml

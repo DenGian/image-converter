@@ -1,9 +1,9 @@
 {
-  "name": "local-lens-image-converter",
+  "name": "image-converter",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Privacy-first browser image converter for GitHub Pages",
+  "description": "Browser-based batch image converter powered by WebAssembly",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:codec": "vitest run src/codecs/codec.integration.test.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "size:check": "node scripts/check-bundle-size.mjs"
   },
   "dependencies": {
     "@imagemagick/magick-wasm": "0.0.43",
@@ -25,20 +26,21 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0",
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
+    "@types/node": "24.10.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@types/node": "24.10.1",
     "@vitejs/plugin-react": "6.1.1",
     "eslint": "10.11.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.7",
-    "happy-dom": "20.14.5",
     "globals": "17.12.0",
+    "happy-dom": "20.14.5",
     "prettier": "3.9.8",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.1",

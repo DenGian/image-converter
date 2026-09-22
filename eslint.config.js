@@ -17,7 +17,13 @@ export default tseslint.config(
       ecmaVersion: 2023,
       globals: { ...globals.browser, ...globals.worker },
       parserOptions: {
-        projectService: { allowDefaultProject: ['eslint.config.js'] },
+        projectService: {
+          allowDefaultProject: [
+            'eslint.config.js',
+            'public/theme-init.js',
+            'scripts/check-bundle-size.mjs',
+          ],
+        },
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         tsconfigRootDir: import.meta.dirname,
       },
@@ -34,5 +40,13 @@ export default tseslint.config(
   {
     files: ['*.config.{js,ts}'],
     languageOptions: { globals: globals.node },
+  },
+  {
+    files: ['scripts/*.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: { projectService: false },
+    },
   },
 )

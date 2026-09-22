@@ -28,6 +28,7 @@ export interface ImageJob {
   file: File
   detectedFormat: InputFormat
   dimensions: ImageDimensions | null
+  outputDimensions: ImageDimensions | null
   frameCount: number
   previewUrl: string | null
   status: JobStatus
@@ -38,4 +39,5 @@ export interface ImageJob {
   outputUrl: string | null
   outputName: string | null
   outputFormat: OutputFormat | null
+  outputOptions: ConversionOptions | null
 }

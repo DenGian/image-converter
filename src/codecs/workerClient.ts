@@ -25,7 +25,7 @@ export class CodecWorkerClient {
   private createWorker(): Worker {
     const worker = new Worker(new URL('./converter.worker.ts', import.meta.url), {
       type: 'module',
-      name: 'local-lens-codec',
+      name: 'image-converter-codec',
     })
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.handleMessage(event.data)
     worker.onerror = () => this.failAll('The image codec could not be initialised.')

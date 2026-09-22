@@ -8,6 +8,7 @@ export const CAPABILITIES = {
     alpha: false,
     lossy: true,
     browserPreview: true,
+    framePolicy: 'single',
   },
   png: {
     label: 'PNG',
@@ -18,6 +19,7 @@ export const CAPABILITIES = {
     alpha: true,
     lossy: false,
     browserPreview: true,
+    framePolicy: 'single',
   },
   webp: {
     label: 'WebP',
@@ -28,6 +30,7 @@ export const CAPABILITIES = {
     alpha: true,
     lossy: true,
     browserPreview: true,
+    framePolicy: 'first',
   },
   avif: {
     label: 'AVIF',
@@ -38,6 +41,7 @@ export const CAPABILITIES = {
     alpha: true,
     lossy: true,
     browserPreview: true,
+    framePolicy: 'first',
   },
   gif: {
     label: 'GIF',
@@ -48,6 +52,7 @@ export const CAPABILITIES = {
     alpha: true,
     lossy: false,
     browserPreview: true,
+    framePolicy: 'first',
   },
   bmp: {
     label: 'BMP',
@@ -58,6 +63,7 @@ export const CAPABILITIES = {
     alpha: false,
     lossy: false,
     browserPreview: true,
+    framePolicy: 'single',
   },
   tiff: {
     label: 'TIFF',
@@ -68,6 +74,7 @@ export const CAPABILITIES = {
     alpha: true,
     lossy: false,
     browserPreview: false,
+    framePolicy: 'first',
   },
   heic: {
     label: 'HEIC / HEIF',
@@ -78,6 +85,7 @@ export const CAPABILITIES = {
     alpha: true,
     lossy: true,
     browserPreview: false,
+    framePolicy: 'first',
   },
   ico: {
     label: 'ICO',
@@ -88,6 +96,7 @@ export const CAPABILITIES = {
     alpha: true,
     lossy: false,
     browserPreview: true,
+    framePolicy: 'single',
   },
 } as const
 

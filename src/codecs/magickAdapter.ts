@@ -8,6 +8,7 @@ import {
 } from '@imagemagick/magick-wasm'
 import { CAPABILITIES, type OutputFormat } from '../formats'
 import { calculateResize } from '../lib/resize'
+import { validateDimensions, validateOutputDimensions } from '../lib/validation'
 import type { ConversionOptions } from '../types'
 import type { InspectResult } from './protocol'
 
@@ -26,6 +27,8 @@ export function inspectWithMagick(bytes: Uint8Array): InspectResult {
   return ImageMagick.readCollection(bytes, (images) => {
     const first = images[0]
     if (!first) throw new Error('No readable image frame was found.')
+    const error = validateDimensions(first.width, first.height)
+    if (error) throw new Error(error)
     return {
       width: first.width,
       height: first.height,
@@ -37,6 +40,8 @@ export function inspectWithMagick(bytes: Uint8Array): InspectResult {
 
 function resizeImage(image: IMagickImage, options: ConversionOptions): void {
   const plan = calculateResize({ width: image.width, height: image.height }, options.resize)
+  const error = validateOutputDimensions(plan.width, plan.height)
+  if (error) throw new Error(error)
   if (plan.width !== image.width || plan.height !== image.height) {
     image.resize(plan.width, plan.height)
   }
@@ -53,6 +58,8 @@ export function convertWithMagick(
   return ImageMagick.readCollection(bytes, (images) => {
     const image = images[0]
     if (!image) throw new Error('No readable image frame was found.')
+    const sourceError = validateDimensions(image.width, image.height)
+    if (sourceError) throw new Error(sourceError)
 
     image.autoOrient()
     resizeImage(image, options)

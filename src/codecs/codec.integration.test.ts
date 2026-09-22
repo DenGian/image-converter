@@ -98,4 +98,16 @@ describe('distributed codec integration', () => {
 
   it('rejects a corrupted input', () =>
     expect(() => inspectWithMagick(new Uint8Array([1, 2, 3, 4]))).toThrow())
+
+  it('rejects unsafe worker-side resize before encoding', () => {
+    expect(() =>
+      convertWithMagick(makeFixture(), {
+        ...defaults,
+        resize: { ...defaults.resize, width: 8193 },
+      }),
+    ).toThrow(/8192/)
+    expect(() =>
+      convertWithMagick(makeFixture(), { ...defaults, resize: { ...defaults.resize, width: NaN } }),
+    ).toThrow(/positive whole number/)
+  })
 })

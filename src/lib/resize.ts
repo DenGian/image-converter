@@ -1,4 +1,5 @@
 import type { ImageDimensions, ResizeOptions } from '../types'
+import { validateOutputDimensions, validateRequestedDimension } from './validation'
 
 export interface ResizePlan extends ImageDimensions {
   cropWidth: number | null
@@ -6,6 +7,9 @@ export interface ResizePlan extends ImageDimensions {
 }
 
 export function calculateResize(source: ImageDimensions, options: ResizeOptions): ResizePlan {
+  const widthError = validateRequestedDimension(options.width, 'width')
+  const heightError = validateRequestedDimension(options.height, 'height')
+  if (widthError || heightError) throw new Error(widthError ?? heightError!)
   const requestedWidth = options.width && options.width > 0 ? options.width : null
   const requestedHeight = options.height && options.height > 0 ? options.height : null
   if (!requestedWidth && !requestedHeight) {
@@ -44,5 +48,14 @@ export function calculateResize(source: ImageDimensions, options: ResizeOptions)
     height,
     cropWidth: shouldCrop ? Math.min(requestedWidth, width) : null,
     cropHeight: shouldCrop ? Math.min(requestedHeight, height) : null,
+  }
+}
+
+export function validateResizePlan(source: ImageDimensions, options: ResizeOptions): string | null {
+  try {
+    const plan = calculateResize(source, options)
+    return validateOutputDimensions(plan.width, plan.height)
+  } catch (error) {
+    return error instanceof Error ? error.message : 'Invalid resize settings.'
   }
 }

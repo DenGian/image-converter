@@ -1,4 +1,4 @@
-import { calculateResize } from './resize'
+import { calculateResize, validateResizePlan } from './resize'
 
 const base = {
   width: null,
@@ -31,4 +31,21 @@ describe('resize calculations', () => {
     expect(
       calculateResize({ width: 100, height: 50 }, { ...base, width: 400, height: 400 }),
     ).toEqual({ width: 100, height: 50, cropWidth: null, cropHeight: null }))
+  it('validates intermediate cover and distortion output', () => {
+    expect(
+      validateResizePlan(
+        { width: 8000, height: 2000 },
+        { ...base, width: 7000, height: 7000, fit: 'cover', neverUpscale: false },
+      ),
+    ).toMatch(/8192|40 megapixel/)
+    expect(
+      validateResizePlan(
+        { width: 100, height: 100 },
+        { ...base, width: 8000, height: 8000, preserveAspectRatio: false, neverUpscale: false },
+      ),
+    ).toMatch(/40 megapixel/)
+    expect(validateResizePlan({ width: 100, height: 100 }, { ...base, width: Infinity })).toMatch(
+      /positive whole number/,
+    )
+  })
 })

@@ -1,4 +1,4 @@
-import { Code2, Download, Moon, ShieldCheck, Sun, Trash2, X } from 'lucide-react'
+import { Code2, Download, Monitor, Moon, Sun, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CodecWorkerClient } from './codecs/workerClient'
 import { DropZone } from './components/DropZone'
@@ -9,7 +9,15 @@ import { CAPABILITIES } from './formats'
 import { useTheme } from './hooks/useTheme'
 import { detectFileFormat } from './lib/formatDetection'
 import { uniqueOutputName } from './lib/fileUtils'
-import { validateBatchSize, validateDimensions, validateFileSize } from './lib/validation'
+import { validateResizePlan } from './lib/resize'
+import {
+  validateBatchSize,
+  validateDimensions,
+  validateFileSize,
+  validateTotalBytes,
+  zipEligibility,
+} from './lib/validation'
+import { prepareZip } from './codecs/zipClient'
 import type { ConversionOptions, ImageJob } from './types'
 
 const DEFAULT_OPTIONS: ConversionOptions = {
@@ -41,9 +49,10 @@ export default function App() {
   const [options, setOptions] = useState(DEFAULT_OPTIONS)
   const [notice, setNotice] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
+  const [preparingZip, setPreparingZip] = useState(false)
   const cancelRequested = useRef(false)
   const clientRef = useRef<CodecWorkerClient | null>(null)
-  const { theme, setTheme } = useTheme()
+  const { theme, resolvedTheme, setTheme } = useTheme()
   const updateJobs = useCallback((updater: (current: ImageJob[]) => ImageJob[]) => {
     setJobs((current) => {
       const next = updater(current)
@@ -51,7 +60,7 @@ export default function App() {
       return next
     })
   }, [])
-  const getClient = () => (clientRef.current ??= new CodecWorkerClient())
+  const getClient = useCallback(() => (clientRef.current ??= new CodecWorkerClient()), [])
 
   useEffect(
     () => () => {
@@ -64,6 +73,53 @@ export default function App() {
     [],
   )
 
+  const inspectJob = useCallback(
+    async (job: ImageJob) => {
+      try {
+        const result = await getClient().inspect(await job.file.arrayBuffer())
+        const dimensionError = validateDimensions(result.width, result.height)
+        if (dimensionError) throw new Error(dimensionError)
+        updateJobs((current) =>
+          current.map((entry) =>
+            entry.id === job.id
+              ? {
+                  ...entry,
+                  dimensions: { width: result.width, height: result.height },
+                  previewUrl:
+                    entry.previewUrl ??
+                    (CAPABILITIES[job.detectedFormat].browserPreview
+                      ? URL.createObjectURL(job.file)
+                      : null),
+                  frameCount: result.frameCount,
+                  status: 'queued',
+                  progress: 0,
+                  error: null,
+                  warning:
+                    result.frameCount > 1
+                      ? `Contains ${result.frameCount} frames/pages. Only the first will be converted.`
+                      : null,
+                }
+              : entry,
+          ),
+        )
+      } catch (error) {
+        updateJobs((current) =>
+          current.map((entry) =>
+            entry.id === job.id
+              ? {
+                  ...entry,
+                  status: 'failed',
+                  progress: 0,
+                  error: error instanceof Error ? error.message : 'The file could not be read.',
+                }
+              : entry,
+          ),
+        )
+      }
+    },
+    [getClient, updateJobs],
+  )
+
   const addFiles = useCallback(
     async (incoming: File[]) => {
       setNotice(null)
@@ -73,28 +129,29 @@ export default function App() {
         setNotice(batchError)
         return
       }
+      const rejected: string[] = []
+      let retainedBytes = jobsRef.current.reduce((sum, job) => sum + job.file.size, 0)
       for (const file of incoming) {
         const sizeError = validateFileSize(file)
-        if (sizeError) {
-          setNotice(sizeError)
+        const totalError = validateTotalBytes(retainedBytes, file.size, 'source')
+        if (sizeError || totalError) {
+          rejected.push(`${file.name}: ${sizeError ?? totalError}`)
           continue
         }
         const detectedFormat = await detectFileFormat(file)
         if (!detectedFormat) {
-          setNotice(`${file.name} is not a supported or recognisable image.`)
+          rejected.push(`${file.name}: unsupported or unrecognisable image.`)
           continue
         }
+        retainedBytes += file.size
         const id = makeId()
-        const previewUrl = CAPABILITIES[detectedFormat].browserPreview
-          ? URL.createObjectURL(file)
-          : null
         const job: ImageJob = {
           id,
           file,
           detectedFormat,
           dimensions: null,
           frameCount: 1,
-          previewUrl,
+          previewUrl: null,
           status: 'inspecting',
           progress: 5,
           error: null,
@@ -103,53 +160,20 @@ export default function App() {
           outputUrl: null,
           outputName: null,
           outputFormat: null,
+          outputDimensions: null,
+          outputOptions: null,
         }
         updateJobs((current) => [...current, job])
-        try {
-          const result = await getClient().inspect(await file.arrayBuffer())
-          const dimensionError = validateDimensions(result.width, result.height)
-          if (dimensionError) throw new Error(dimensionError)
-          updateJobs((current) =>
-            current.map((entry) =>
-              entry.id === id
-                ? {
-                    ...entry,
-                    dimensions: { width: result.width, height: result.height },
-                    frameCount: result.frameCount,
-                    status: 'queued',
-                    progress: 0,
-                    warning:
-                      result.frameCount > 1
-                        ? `Contains ${result.frameCount} frames/pages. Only the first will be converted.`
-                        : null,
-                  }
-                : entry,
-            ),
-          )
-        } catch (error) {
-          updateJobs((current) =>
-            current.map((entry) =>
-              entry.id === id
-                ? {
-                    ...entry,
-                    status: 'failed',
-                    progress: 0,
-                    error: error instanceof Error ? error.message : 'The file could not be read.',
-                  }
-                : entry,
-            ),
-          )
-        }
+        await inspectJob(job)
       }
+      if (rejected.length) setNotice(rejected.join(' '))
     },
-    [updateJobs],
+    [inspectJob, updateJobs],
   )
 
   useEffect(() => {
     const paste = (event: ClipboardEvent) => {
-      const files = Array.from(event.clipboardData?.files ?? []).filter((file) =>
-        file.type.startsWith('image/'),
-      )
+      const files = Array.from(event.clipboardData?.files ?? [])
       if (files.length) void addFiles(files)
     }
     window.addEventListener('paste', paste)
@@ -171,9 +195,65 @@ export default function App() {
     setNotice(null)
   }
 
+  const clearOutputs = () => {
+    for (const job of jobsRef.current) if (job.outputUrl) URL.revokeObjectURL(job.outputUrl)
+    updateJobs((current) =>
+      current.map((job) => ({
+        ...job,
+        output: null,
+        outputUrl: null,
+        outputName: null,
+        outputFormat: null,
+        outputDimensions: null,
+        outputOptions: null,
+        status: job.status === 'complete' ? 'queued' : job.status,
+      })),
+    )
+  }
+
+  const requeue = (id: string) => {
+    const job = jobsRef.current.find((entry) => entry.id === id)
+    if (!job || job.status === 'inspecting' || job.status === 'converting') return
+    if (job.outputUrl) URL.revokeObjectURL(job.outputUrl)
+    updateJobs((current) =>
+      current.map((entry) =>
+        entry.id === id
+          ? {
+              ...entry,
+              status: job.dimensions ? 'queued' : 'inspecting',
+              error: null,
+              progress: 0,
+              output: null,
+              outputUrl: null,
+              outputName: null,
+              outputFormat: null,
+              outputDimensions: null,
+              outputOptions: null,
+              previewUrl: job.dimensions
+                ? (entry.previewUrl ??
+                  (CAPABILITIES[entry.detectedFormat].browserPreview
+                    ? URL.createObjectURL(entry.file)
+                    : null))
+                : null,
+            }
+          : entry,
+      ),
+    )
+    if (!job.dimensions) void inspectJob(job)
+  }
+  const requeueAll = () => {
+    for (const job of jobsRef.current) requeue(job.id)
+  }
+
+  const settingsError =
+    jobs
+      .filter((job) => job.status === 'queued' && job.dimensions)
+      .map((job) => validateResizePlan(job.dimensions!, options.resize))
+      .find(Boolean) ?? null
+
   const convertAll = async () => {
     const pending = jobsRef.current.filter((job) => job.status === 'queued')
-    if (!pending.length) return
+    if (!pending.length || settingsError) return
     setRunning(true)
     setNotice(null)
     cancelRequested.current = false
@@ -182,6 +262,12 @@ export default function App() {
     )
     for (const pendingJob of pending) {
       if (cancelRequested.current) break
+      const resizeError =
+        pendingJob.dimensions && validateResizePlan(pendingJob.dimensions, options.resize)
+      if (resizeError) {
+        setNotice(`${pendingJob.file.name}: ${resizeError}`)
+        break
+      }
       updateJobs((current) =>
         current.map((job) =>
           job.id === pendingJob.id
@@ -200,6 +286,12 @@ export default function App() {
         )
         if (cancelRequested.current) break
         const blob = new Blob([result.bytes], { type: CAPABILITIES[options.format].mime })
+        const retainedOutput = jobsRef.current.reduce(
+          (sum, job) => sum + (job.id === pendingJob.id ? 0 : (job.output?.size ?? 0)),
+          0,
+        )
+        const outputError = validateTotalBytes(retainedOutput, blob.size, 'output')
+        if (outputError) throw new Error(outputError)
         const outputName = uniqueOutputName(pendingJob.file.name, options.format, usedNames)
         const outputUrl = CAPABILITIES[options.format].browserPreview
           ? URL.createObjectURL(blob)
@@ -216,8 +308,9 @@ export default function App() {
                   outputUrl,
                   outputName,
                   outputFormat: options.format,
+                  outputDimensions: { width: result.width, height: result.height },
+                  outputOptions: structuredClone(options),
                   previewUrl: null,
-                  dimensions: { width: result.width, height: result.height },
                 }
               : job,
           ),
@@ -253,12 +346,6 @@ export default function App() {
     cancelRequested.current = true
     clientRef.current?.cancel()
   }
-  const retry = (id: string) =>
-    updateJobs((current) =>
-      current.map((job) =>
-        job.id === id ? { ...job, status: 'queued', error: null, progress: 0 } : job,
-      ),
-    )
   const download = (job: ImageJob) => {
     if (job.output && job.outputName) saveBlob(job.output, job.outputName)
   }
@@ -267,47 +354,64 @@ export default function App() {
     [jobs],
   )
   const pendingCount = jobs.filter((job) => job.status === 'queued').length
-  const overallProgress = jobs.length
-    ? Math.round(
-        jobs.reduce((sum, job) => sum + (job.status === 'complete' ? 100 : job.progress), 0) /
-          jobs.length,
-      )
-    : 0
+  const zipError = zipEligibility(completed.reduce((sum, job) => sum + (job.output?.size ?? 0), 0))
   const downloadAll = async () => {
-    const { default: JSZip } = await import('jszip')
-    const zip = new JSZip()
-    for (const job of completed) zip.file(job.outputName!, job.output!)
-    saveBlob(
-      await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }),
-      'local-lens-conversions.zip',
-    )
+    if (zipError || preparingZip) return
+    setPreparingZip(true)
+    setNotice(null)
+    try {
+      saveBlob(
+        await prepareZip(completed.map((job) => ({ name: job.outputName!, blob: job.output! }))),
+        'image-converter-files.zip',
+      )
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? `ZIP preparation failed: ${error.message}`
+          : 'ZIP preparation failed.',
+      )
+    } finally {
+      setPreparingZip(false)
+    }
   }
 
   return (
     <div className="app-shell">
       <header className="site-header">
-        <a className="brand" href="./" aria-label="Local Lens home">
+        <a className="brand" href="/" aria-label="Image Converter home">
           <span className="brand-mark" aria-hidden="true">
             <span />
           </span>
-          <span>LOCAL LENS</span>
+          <span>Image Converter</span>
         </a>
         <nav aria-label="Project links">
-          <span className="privacy-badge">
-            <ShieldCheck size={15} /> Local processing
-          </span>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          >
-            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+          <a href="#format-support" className="header-link">
+            Formats
+          </a>
+          <label className="theme-control">
+            <span className="visually-hidden">Theme preference</span>
+            {theme === 'system' ? (
+              <Monitor size={17} aria-hidden="true" />
+            ) : resolvedTheme === 'dark' ? (
+              <Moon size={17} aria-hidden="true" />
+            ) : (
+              <Sun size={17} aria-hidden="true" />
+            )}
+            <select
+              aria-label="Theme preference"
+              value={theme}
+              onChange={(event) => setTheme(event.target.value as typeof theme)}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
           <a
             className="icon-button"
             href="https://github.com/DenGian/image-converter"
             aria-label="View source on GitHub"
+            title="View source on GitHub"
           >
             <Code2 size={18} />
           </a>
@@ -315,32 +419,18 @@ export default function App() {
       </header>
       <main>
         <section className="hero">
-          <p className="eyebrow">PRIVATE BY DEFAULT</p>
-          <h1>
-            Convert images.
-            <br />
-            <em>Keep them yours.</em>
-          </h1>
+          <h1>Convert images</h1>
           <p className="hero-copy">
-            A capable image workshop that runs entirely in your browser. No uploads, no accounts, no
-            waiting on a server.
+            Batch-convert and resize images directly in your browser. Your files do not leave this
+            device.
           </p>
-          <div className="hero-facts">
-            <span>
-              <strong>9</strong> useful formats
-            </span>
-            <span>
-              <strong>0</strong> files uploaded
-            </span>
-            <span>
-              <strong>100%</strong> in your browser
-            </span>
-          </div>
         </section>
         <section className="workspace" aria-label="Image conversion workspace">
           <div className="workspace-main">
             <DropZone onFiles={(files) => void addFiles(files)} disabled={running} />
-            <FormatGuide />
+            <div id="format-support">
+              <FormatGuide />
+            </div>
             {notice && (
               <div className="notice" role="alert">
                 <span>{notice}</span>
@@ -357,11 +447,18 @@ export default function App() {
               <section className="queue" aria-labelledby="queue-heading">
                 <div className="queue-header">
                   <div>
-                    <p className="eyebrow">YOUR BATCH</p>
                     <h2 id="queue-heading">
                       {jobs.length} {jobs.length === 1 ? 'image' : 'images'}
                     </h2>
                   </div>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={running || !completed.length}
+                    onClick={clearOutputs}
+                  >
+                    Clear outputs
+                  </button>
                   <button
                     className="text-button"
                     type="button"
@@ -377,7 +474,7 @@ export default function App() {
                       key={job.id}
                       job={job}
                       onRemove={removeJob}
-                      onRetry={retry}
+                      onRetry={requeue}
                       onDownload={download}
                       locked={running}
                     />
@@ -386,56 +483,86 @@ export default function App() {
               </section>
             )}
           </div>
-          <SettingsPanel options={options} onChange={setOptions} disabled={running} />
+          <SettingsPanel
+            options={options}
+            onChange={setOptions}
+            disabled={running}
+            resizeError={settingsError}
+          />
         </section>
         {jobs.length > 0 && (
           <section className="action-bar" aria-label="Batch actions">
             <div>
               <strong>
-                {running
-                  ? `Converting · ${overallProgress}%`
-                  : pendingCount
-                    ? `${pendingCount} ready to convert`
-                    : completed.length
-                      ? `${completed.length} complete`
-                      : 'No queued images'}
+                {preparingZip
+                  ? 'Preparing ZIP'
+                  : running
+                    ? 'Converting'
+                    : pendingCount
+                      ? `${pendingCount} ready to convert`
+                      : completed.length
+                        ? `${completed.length} complete`
+                        : 'No queued images'}
               </strong>
-              <span>Processed sequentially to keep memory use predictable</span>
+              <span>
+                Files are processed sequentially. The first conversion loads the WebAssembly codec.
+              </span>
+              {settingsError && (
+                <span className="file-error" role="alert">
+                  {settingsError}
+                </span>
+              )}
+              {completed.length > 1 && zipError && <span className="file-error">{zipError}</span>}
             </div>
             <div className="action-buttons">
               {completed.length > 1 && (
-                <button type="button" className="button ghost" onClick={() => void downloadAll()}>
-                  <Download size={17} /> Download all (.zip)
+                <button
+                  type="button"
+                  className="button ghost"
+                  disabled={!!zipError || preparingZip || running}
+                  onClick={() => void downloadAll()}
+                >
+                  <Download size={17} /> {preparingZip ? 'Preparing ZIP' : 'Download all (.zip)'}
                 </button>
               )}
               {running ? (
                 <button type="button" className="button danger" onClick={cancel}>
                   <X size={17} /> Cancel
                 </button>
+              ) : pendingCount ? (
+                <button
+                  type="button"
+                  className="button primary convert-button"
+                  disabled={!!settingsError || preparingZip}
+                  onClick={() => void convertAll()}
+                >
+                  Convert {pendingCount} {pendingCount === 1 ? 'image' : 'images'}
+                </button>
               ) : (
                 <button
                   type="button"
                   className="button primary convert-button"
-                  disabled={!pendingCount}
-                  onClick={() => void convertAll()}
+                  disabled={preparingZip || jobs.some((job) => job.status === 'inspecting')}
+                  onClick={requeueAll}
                 >
-                  Convert {pendingCount || ''} {pendingCount === 1 ? 'image' : 'images'}
+                  Requeue batch
                 </button>
               )}
             </div>
           </section>
         )}
         <div className="visually-hidden" aria-live="polite">
-          {running
-            ? `Conversion ${overallProgress} percent complete`
-            : completed.length
-              ? `${completed.length} conversions complete`
-              : ''}
+          {preparingZip
+            ? 'Preparing ZIP'
+            : running
+              ? 'Conversion in progress'
+              : completed.length
+                ? `${completed.length} conversions complete`
+                : ''}
         </div>
       </main>
       <footer>
-        <span>Local Lens · Open source under MIT</span>
-        <span>Your files stay on this device.</span>
+        <span>Image Converter · MIT</span>
       </footer>
     </div>
   )

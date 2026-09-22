@@ -15,8 +15,11 @@ export function FormatGuide() {
         </div>
       </div>
       <p className="fine-print">
-        HEIC/HEIF is input-only. ICO is output-only. Animated and multi-page files use the first
-        frame and show a warning.
+        HEIC/HEIF is input-only. ICO is output-only. Multi-frame{' '}
+        {INPUT_FORMATS.filter((format) => CAPABILITIES[format].framePolicy === 'first')
+          .map((format) => CAPABILITIES[format].label)
+          .join(', ')}{' '}
+        input uses the first frame or page and shows a warning.
       </p>
     </details>
   )

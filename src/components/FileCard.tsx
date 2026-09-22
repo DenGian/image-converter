@@ -11,8 +11,8 @@ interface FileCardProps {
   locked?: boolean
 }
 const statusLabel: Record<ImageJob['status'], string> = {
-  inspecting: 'Reading image',
-  queued: 'Queued',
+  inspecting: 'Reading',
+  queued: 'Ready',
   converting: 'Converting',
   complete: 'Complete',
   failed: 'Failed',
@@ -59,9 +59,9 @@ export function FileCard({ job, onRemove, onRetry, onDownload, locked = false }:
           </div>
         </div>
         {(job.status === 'converting' || job.status === 'inspecting') && (
-          <progress value={job.progress} max="100" aria-label={`${job.file.name} progress`}>
-            {job.progress}%
-          </progress>
+          <span className="file-stage">
+            {job.status === 'inspecting' || job.progress < 18 ? 'Loading converter' : 'Converting'}
+          </span>
         )}
         {job.warning && <p className="file-warning">{job.warning}</p>}
         {job.error && (
@@ -71,8 +71,20 @@ export function FileCard({ job, onRemove, onRetry, onDownload, locked = false }:
         )}
         {job.status === 'complete' && job.output && (
           <p className="size-result">
+            {job.outputFormat && CAPABILITIES[job.outputFormat].label} ·{' '}
+            {job.outputDimensions?.width} × {job.outputDimensions?.height} ·{' '}
             {humanFileSize(job.file.size)} → <strong>{humanFileSize(job.output.size)}</strong>{' '}
             <span>{percentageChange(job.file.size, job.output.size)}</span>
+          </p>
+        )}
+        {job.status === 'complete' && job.outputOptions && (
+          <p className="output-settings">
+            Converted with {CAPABILITIES[job.outputOptions.format].label}, quality{' '}
+            {job.outputOptions.quality},{' '}
+            {job.outputOptions.stripMetadata
+              ? 'metadata stripped'
+              : 'metadata retained when supported'}
+            .
           </p>
         )}
       </div>
@@ -89,14 +101,14 @@ export function FileCard({ job, onRemove, onRetry, onDownload, locked = false }:
             <Download size={18} />
           </button>
         )}
-        {(job.status === 'failed' || job.status === 'cancelled') && (
+        {(job.status === 'failed' || job.status === 'cancelled' || job.status === 'complete') && (
           <button
             type="button"
             className="icon-button"
             disabled={locked}
             onClick={() => onRetry(job.id)}
-            aria-label={`Retry ${job.file.name}`}
-            title="Retry"
+            aria-label={`${job.status === 'complete' ? 'Reconvert' : 'Requeue'} ${job.file.name}`}
+            title={job.status === 'complete' ? 'Reconvert' : 'Requeue'}
           >
             <RotateCcw size={18} />
           </button>

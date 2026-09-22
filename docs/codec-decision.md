@@ -4,7 +4,7 @@ Date: 2026-09-22
 
 ## Decision
 
-Use `@imagemagick/magick-wasm` 0.0.43 behind one module Web Worker. Vite imports `magick.wasm?url`, so the hashed asset honours the configured `/image-converter/` base. The worker is emitted separately and the 14.8 MB WASM binary is fetched only when the first image is inspected.
+Use `@imagemagick/magick-wasm` 0.0.43 behind one module Web Worker. Vite imports `magick.wasm?url`, so the hashed asset resolves at the Vercel root. The worker is emitted separately and the 14.8 MB WASM binary is fetched only when the first image is inspected.
 
 ## Production spike results
 
@@ -12,7 +12,7 @@ The spike used the package's distributed x86 WASM—not system ImageMagick—to 
 
 - worker JavaScript: about 195 kB raw;
 - ImageMagick WASM: 14,828 kB raw, 5,344 kB gzip;
-- correct hashed URLs below `/image-converter/assets/`.
+- correct hashed URLs below `/assets/`.
 
 Fixture tests verified JPEG, PNG, WebP, AVIF, GIF, BMP, TIFF, and ICO encoding. JPEG, PNG, WebP, AVIF, GIF, BMP, TIFF, and HEIC decoding were verified. ICO decode and HEIC encode were not dependable in this distributed build and are not advertised.
 
@@ -24,4 +24,4 @@ Focused `@jsquash/*` codecs offer smaller, independently lazy chunks for JPEG/PN
 
 ## Trade-offs
 
-The chosen engine is Apache-2.0 and consistently handles orientation, alpha flattening, resizing, stripping, and encoding. Its main cost is the large initial codec download and WebAssembly memory use. The app mitigates memory risk through a 50 MB file limit, 40 megapixel decoded limit, 30-file batch limit, sequential execution, cancellation by worker termination, and early object-URL revocation.
+The chosen engine is Apache-2.0 and consistently handles orientation, alpha flattening, resizing, stripping, and encoding. Its main cost is the large initial codec download and WebAssembly memory use. The app mitigates memory risk through a 50 MiB file limit, 40 megapixel decoded and output limits, 8192 px output axes, 150 MiB retained source/output limits, a 75 MiB ZIP threshold, sequential execution, cancellation by worker termination, and object-URL revocation.

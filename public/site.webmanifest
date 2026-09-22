@@ -1,12 +1,12 @@
 {
-  "name": "Local Lens — Image converter",
-  "short_name": "Local Lens",
-  "description": "Privacy-first image conversion in your browser.",
-  "start_url": "/image-converter/",
-  "scope": "/image-converter/",
-  "display": "standalone",
+  "name": "Image Converter",
+  "short_name": "Image Converter",
+  "description": "Browser-based batch image conversion.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
   "background_color": "#f3f1eb",
-  "theme_color": "#ea5a35",
+  "theme_color": "#b63f20",
   "icons": [
     {
       "src": "favicon.svg",

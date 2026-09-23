@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
+import { StrictMode } from 'react'
 
 const inspect = vi.fn().mockResolvedValue({ width: 2, height: 3, frameCount: 1, format: 'PNG' })
 const convert = vi.fn().mockResolvedValue({
@@ -88,6 +89,10 @@ describe('App', () => {
   })
   it('reconverts with new settings and replaces the old output URL', async () => {
     const user = userEvent.setup()
+    let nextUrl = 0
+    const create = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockImplementation(() => `blob:reconvert-${++nextUrl}`)
     const revoke = vi.spyOn(URL, 'revokeObjectURL')
     render(<App />)
     await user.upload(screen.getByLabelText('Add images').querySelector('input')!, png())
@@ -97,10 +102,67 @@ describe('App', () => {
     await user.selectOptions(screen.getByLabelText('Output format'), 'jpeg')
     expect(screen.getByText(/Converted with WebP/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Reconvert sample.png' }))
-    expect(revoke).toHaveBeenCalled()
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:reconvert-2'))
     await user.click(screen.getByRole('button', { name: 'Convert 1 image' }))
     await screen.findByRole('button', { name: 'Download sample.jpg' })
     expect(screen.getByText(/Converted with JPEG/)).toBeInTheDocument()
+    create.mockRestore()
+    revoke.mockRestore()
+  })
+  it('restores the source preview after clearing outputs and releases unused URLs', async () => {
+    const user = userEvent.setup()
+    let nextUrl = 0
+    const create = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockImplementation(() => `blob:test-${++nextUrl}`)
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url) => {
+      expect(screen.queryByRole('article')?.querySelector('img')?.src).not.toBe(url)
+    })
+    const { unmount } = render(<App />)
+    await user.upload(screen.getByLabelText('Add images').querySelector('input')!, png())
+    await screen.findByText('Ready', { exact: true })
+    const thumbnail = document.querySelector('.file-card .thumbnail img') as HTMLImageElement
+    const sourceUrl = thumbnail.src
+    expect(sourceUrl).toBe('blob:test-1')
+
+    await user.click(screen.getByRole('button', { name: 'Convert 1 image' }))
+    await screen.findByText('Complete', { exact: true })
+    const outputUrl = thumbnail.src
+    expect(outputUrl).toBe('blob:test-2')
+    expect(revoke).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Clear outputs' }))
+    expect(await screen.findByText('Ready', { exact: true })).toBeInTheDocument()
+    expect(thumbnail.src).toBe(sourceUrl)
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith(outputUrl))
+    expect(revoke).not.toHaveBeenCalledWith(sourceUrl)
+
+    unmount()
+    expect(revoke).toHaveBeenCalledWith(sourceUrl)
+    create.mockRestore()
+    revoke.mockRestore()
+  })
+  it('releases every preview URL after clearing the queue in Strict Mode', async () => {
+    const user = userEvent.setup()
+    let nextUrl = 0
+    const create = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockImplementation(() => `blob:strict-${++nextUrl}`)
+    const revoke = vi.spyOn(URL, 'revokeObjectURL')
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    )
+    await user.upload(screen.getByLabelText('Add images').querySelector('input')!, png())
+    await screen.findByText('Ready', { exact: true })
+    await user.click(screen.getByRole('button', { name: 'Clear all' }))
+    await waitFor(() =>
+      expect(revoke.mock.calls.map(([url]) => url).sort()).toEqual(
+        create.mock.results.map(({ value }) => String(value)).sort(),
+      ),
+    )
+    create.mockRestore()
     revoke.mockRestore()
   })
 })

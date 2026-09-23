@@ -46,6 +46,8 @@ function saveBlob(blob: Blob, filename: string) {
 export default function App() {
   const [jobs, setJobs] = useState<ImageJob[]>([])
   const jobsRef = useRef(jobs)
+  const allocatedUrlsRef = useRef<Set<string>>(new Set())
+  const mountedRef = useRef(false)
   const [options, setOptions] = useState(DEFAULT_OPTIONS)
   const [notice, setNotice] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -61,22 +63,40 @@ export default function App() {
     })
   }, [])
   const getClient = useCallback(() => (clientRef.current ??= new CodecWorkerClient()), [])
+  const createJobUrl = useCallback((blob: Blob) => {
+    const url = URL.createObjectURL(blob)
+    allocatedUrlsRef.current.add(url)
+    return url
+  }, [])
 
-  useEffect(
-    () => () => {
-      clientRef.current?.dispose()
-      for (const job of jobsRef.current) {
-        if (job.previewUrl) URL.revokeObjectURL(job.previewUrl)
-        if (job.outputUrl) URL.revokeObjectURL(job.outputUrl)
+  useEffect(() => {
+    const activeUrls = new Set(
+      jobs.flatMap((job) => [job.previewUrl, job.outputUrl].filter((url): url is string => !!url)),
+    )
+    for (const url of allocatedUrlsRef.current) {
+      if (!activeUrls.has(url)) {
+        URL.revokeObjectURL(url)
+        allocatedUrlsRef.current.delete(url)
       }
-    },
-    [],
-  )
+    }
+  }, [jobs])
+
+  useEffect(() => {
+    const allocatedUrls = allocatedUrlsRef.current
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      clientRef.current?.dispose()
+      for (const url of allocatedUrls) URL.revokeObjectURL(url)
+      allocatedUrls.clear()
+    }
+  }, [])
 
   const inspectJob = useCallback(
     async (job: ImageJob) => {
       try {
         const result = await getClient().inspect(await job.file.arrayBuffer())
+        if (!mountedRef.current) return
         const dimensionError = validateDimensions(result.width, result.height)
         if (dimensionError) throw new Error(dimensionError)
         updateJobs((current) =>
@@ -88,7 +108,7 @@ export default function App() {
                   previewUrl:
                     entry.previewUrl ??
                     (CAPABILITIES[job.detectedFormat].browserPreview
-                      ? URL.createObjectURL(job.file)
+                      ? createJobUrl(job.file)
                       : null),
                   frameCount: result.frameCount,
                   status: 'queued',
@@ -103,6 +123,7 @@ export default function App() {
           ),
         )
       } catch (error) {
+        if (!mountedRef.current) return
         updateJobs((current) =>
           current.map((entry) =>
             entry.id === job.id
@@ -117,7 +138,7 @@ export default function App() {
         )
       }
     },
-    [getClient, updateJobs],
+    [createJobUrl, getClient, updateJobs],
   )
 
   const addFiles = useCallback(
@@ -181,22 +202,14 @@ export default function App() {
   }, [addFiles])
 
   const removeJob = (id: string) => {
-    const job = jobsRef.current.find((entry) => entry.id === id)
-    if (job?.previewUrl) URL.revokeObjectURL(job.previewUrl)
-    if (job?.outputUrl) URL.revokeObjectURL(job.outputUrl)
     updateJobs((current) => current.filter((entry) => entry.id !== id))
   }
   const clearAll = () => {
-    for (const job of jobsRef.current) {
-      if (job.previewUrl) URL.revokeObjectURL(job.previewUrl)
-      if (job.outputUrl) URL.revokeObjectURL(job.outputUrl)
-    }
     updateJobs(() => [])
     setNotice(null)
   }
 
   const clearOutputs = () => {
-    for (const job of jobsRef.current) if (job.outputUrl) URL.revokeObjectURL(job.outputUrl)
     updateJobs((current) =>
       current.map((job) => ({
         ...job,
@@ -214,7 +227,6 @@ export default function App() {
   const requeue = (id: string) => {
     const job = jobsRef.current.find((entry) => entry.id === id)
     if (!job || job.status === 'inspecting' || job.status === 'converting') return
-    if (job.outputUrl) URL.revokeObjectURL(job.outputUrl)
     updateJobs((current) =>
       current.map((entry) =>
         entry.id === id
@@ -232,7 +244,7 @@ export default function App() {
               previewUrl: job.dimensions
                 ? (entry.previewUrl ??
                   (CAPABILITIES[entry.detectedFormat].browserPreview
-                    ? URL.createObjectURL(entry.file)
+                    ? createJobUrl(entry.file)
                     : null))
                 : null,
             }
@@ -284,7 +296,7 @@ export default function App() {
               current.map((job) => (job.id === pendingJob.id ? { ...job, progress } : job)),
             ),
         )
-        if (cancelRequested.current) break
+        if (cancelRequested.current || !mountedRef.current) break
         const blob = new Blob([result.bytes], { type: CAPABILITIES[options.format].mime })
         const retainedOutput = jobsRef.current.reduce(
           (sum, job) => sum + (job.id === pendingJob.id ? 0 : (job.output?.size ?? 0)),
@@ -293,10 +305,6 @@ export default function App() {
         const outputError = validateTotalBytes(retainedOutput, blob.size, 'output')
         if (outputError) throw new Error(outputError)
         const outputName = uniqueOutputName(pendingJob.file.name, options.format, usedNames)
-        const outputUrl = CAPABILITIES[options.format].browserPreview
-          ? URL.createObjectURL(blob)
-          : null
-        if (pendingJob.previewUrl) URL.revokeObjectURL(pendingJob.previewUrl)
         updateJobs((current) =>
           current.map((job) =>
             job.id === pendingJob.id
@@ -305,12 +313,13 @@ export default function App() {
                   status: 'complete',
                   progress: 100,
                   output: blob,
-                  outputUrl,
+                  outputUrl: CAPABILITIES[options.format].browserPreview
+                    ? createJobUrl(blob)
+                    : null,
                   outputName,
                   outputFormat: options.format,
                   outputDimensions: { width: result.width, height: result.height },
                   outputOptions: structuredClone(options),
-                  previewUrl: null,
                 }
               : job,
           ),

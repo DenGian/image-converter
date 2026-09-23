@@ -4,7 +4,7 @@ Browser-based batch image conversion and resizing powered by WebAssembly and Web
 
 [![CI](https://github.com/DenGian/image-converter/actions/workflows/ci.yml/badge.svg)](https://github.com/DenGian/image-converter/actions/workflows/ci.yml) [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Live demo: pending Vercel deployment. Add the verified production URL here after launch.
+Live demo: [image-converter-two-eta.vercel.app](https://image-converter-two-eta.vercel.app/).
 
 ![Image Converter desktop screenshot](docs/assets/desktop.png)
 

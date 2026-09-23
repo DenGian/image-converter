@@ -16,8 +16,13 @@ describe('DropZone', () => {
     const { container } = render(<DropZone onFiles={onFiles} />)
     const picker = screen.getByRole('button', { name: 'Choose images' })
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input).toHaveAttribute('hidden')
     expect(input).toHaveAttribute('tabindex', '-1')
     expect(input).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+      'Choose images',
+      'Paste',
+    ])
     expect(input).toHaveAttribute('multiple')
     expect(input.accept).toContain('.heic')
     const click = vi.spyOn(input, 'click')

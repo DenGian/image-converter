@@ -79,8 +79,11 @@ export function FileCard({ job, onRemove, onRetry, onDownload, locked = false }:
         )}
         {job.status === 'complete' && job.outputOptions && (
           <p className="output-settings">
-            Converted with {CAPABILITIES[job.outputOptions.format].label}, quality{' '}
-            {job.outputOptions.quality},{' '}
+            Converted with {CAPABILITIES[job.outputOptions.format].label}
+            {CAPABILITIES[job.outputOptions.format].lossy
+              ? `, quality ${job.outputOptions.quality}`
+              : ''}
+            ,{' '}
             {job.outputOptions.stripMetadata
               ? 'metadata stripped'
               : 'metadata retained when supported'}

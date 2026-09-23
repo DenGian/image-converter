@@ -78,8 +78,8 @@ export function DropZone({ onFiles, disabled = false }: DropZoneProps) {
       </div>
       <input
         ref={inputRef}
-        className="visually-hidden"
         type="file"
+        hidden
         tabIndex={-1}
         aria-hidden="true"
         multiple

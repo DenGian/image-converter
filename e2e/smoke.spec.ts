@@ -16,6 +16,11 @@ test('converts and downloads at the production root', async ({ page }) => {
   expect(entry.headers()['content-security-policy']).toContain("frame-ancestors 'none'")
   await expect(page).toHaveTitle(/Image Converter/)
   await expect(page.getByRole('heading', { name: /Convert images/ })).toBeVisible()
+  await expect(page.locator('input[type="file"]')).toBeHidden()
+  await expect(page.getByRole('button', { name: '', exact: true })).toHaveCount(0)
+  const dropZoneTree = await page.locator('section[aria-label="Add images"]').ariaSnapshot()
+  expect(dropZoneTree).toContain('button "Choose images"')
+  expect(dropZoneTree).not.toMatch(/- button:\s*(?:\n|$)/)
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   )
@@ -29,6 +34,8 @@ test('converts and downloads at the production root', async ({ page }) => {
     .locator('input[type="file"]')
     .setInputFiles({ name: 'portrait.jpg', mimeType: 'image/jpeg', buffer: fixture })
   await expect(page.getByText('Ready', { exact: true })).toBeVisible({ timeout: 20_000 })
+  const sourcePreview = await page.locator('.file-card .thumbnail img').getAttribute('src')
+  expect(sourcePreview).toMatch(/^blob:/)
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
   const wasmAsset = readdirSync(resolve('dist/assets')).find((name) => name.endsWith('.wasm'))
   expect(wasmAsset).toMatch(/^magick-.+\.wasm$/)
@@ -38,6 +45,14 @@ test('converts and downloads at the production root', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Convert 1 image' }).click()
   await expect(page.getByText('Complete', { exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('.file-card .thumbnail img')).not.toHaveAttribute('src', sourcePreview!)
+  await expect
+    .poll(() =>
+      page
+        .locator('.file-card .thumbnail img')
+        .evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0)
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
   if (process.env.CAPTURE_DOCS && test.info().project.name.startsWith('chromium')) {
     const desktop = test.info().project.name === 'chromium-desktop'
@@ -59,7 +74,27 @@ test('converts and downloads at the production root', async ({ page }) => {
   const downloadPath = await download.path()
   const bytes = readFileSync(downloadPath)
   expect(bytes.subarray(8, 12).toString()).toBe('WEBP')
+  await page.getByRole('button', { name: 'Clear outputs' }).click()
+  await expect(page.getByText('Ready', { exact: true })).toBeVisible()
+  await expect(page.locator('.file-card .thumbnail img')).toHaveAttribute('src', sourcePreview!)
+  expect(
+    await page
+      .locator('.file-card .thumbnail img')
+      .evaluate((image: HTMLImageElement) => image.naturalWidth),
+  ).toBeGreaterThan(0)
   expect(consoleErrors).toEqual([])
+})
+
+test('serves canonical and social preview metadata', async ({ page }) => {
+  await page.goto('./')
+  const site = 'https://image-converter-two-eta.vercel.app/'
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', site)
+  await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', site)
+  for (const selector of ['meta[property="og:image"]', 'meta[name="twitter:image"]'])
+    await expect(page.locator(selector)).toHaveAttribute('content', `${site}og-image.png`)
+  const image = await page.request.get('/og-image.png')
+  expect(image.ok()).toBe(true)
+  expect(image.headers()['content-type']).toContain('image/png')
 })
 
 test('narrow keyboard and invalid-input states', async ({ page }) => {

@@ -58,9 +58,9 @@ npm run test:e2e
 
 `npm run preview` serves the production build with the configured security headers for local checking. Tests inspect `vercel.json` for production cache rules. Automated accessibility checks complement manual keyboard, zoom, and contrast review.
 
-## Vercel release
+## Deployment
 
-Use Vercel's Git integration with the Vite preset, `npm run build`, and `dist` output. No environment variables or server are required. The release path is feature branch → pull request → CI → Vercel preview → review → merge to protected `main` → Vercel production. Protect `main` and require CI before merge in repository settings. Deployment and remote settings changes require owner approval. Verify the production URL, worker and WASM requests, headers, download, and browser console before adding a live link or publishing v1.0.0.
+The [live site](https://image-converter-two-eta.vercel.app/) is deployed through Vercel's Git integration with the Vite preset, `npm run build`, and `dist` output. No environment variables or server are required. Pull requests run CI and receive Vercel previews; `main` deploys to production.
 
 ## Limits and roadmap
 

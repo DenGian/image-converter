@@ -77,11 +77,13 @@ test('converts and downloads at the production root', async ({ page }) => {
   await page.getByRole('button', { name: 'Clear outputs' }).click()
   await expect(page.getByText('Ready', { exact: true })).toBeVisible()
   await expect(page.locator('.file-card .thumbnail img')).toHaveAttribute('src', sourcePreview!)
-  expect(
-    await page
-      .locator('.file-card .thumbnail img')
-      .evaluate((image: HTMLImageElement) => image.naturalWidth),
-  ).toBeGreaterThan(0)
+  await expect
+    .poll(() =>
+      page
+        .locator('.file-card .thumbnail img')
+        .evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0)
   expect(consoleErrors).toEqual([])
 })
 

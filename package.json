@@ -19,7 +19,7 @@
     "size:check": "node scripts/check-bundle-size.mjs"
   },
   "dependencies": {
-    "@imagemagick/magick-wasm": "0.0.43",
+    "@imagemagick/magick-wasm": "0.0.44",
     "jszip": "3.10.2",
     "lucide-react": "1.47.0",
     "react": "19.3.0",

@@ -22,7 +22,7 @@
     "@imagemagick/magick-wasm": "0.0.43",
     "jszip": "3.10.2",
     "lucide-react": "1.47.0",
-    "react": "19.3.0",
+    "react": "19.3.1",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
